@@ -1,0 +1,9 @@
+[package]
+name = "t"
+version = "0.0.1"
+edition = "2018"
+
+[dependencies]
+# azul-text-layout = "0.0.4"
+#azul-text-layout = {  git = "https://github.com/fschutt/azul" }
+azul-text-layout = { path = "../../azul/azul-text-layout" }
