@@ -1,0 +1,17 @@
+[package]
+name = "wr-helpers"
+version = "0.0.1"
+edition = "2018"
+
+[dependencies]
+app_units = "0.7"
+env_logger = { version = "0.10", default_features = false }
+euclid = "0.22"
+gleam = "0.15"
+glutin = "0.28"
+rayon = "1"
+webrender = { git = "https://github.com/servo/webrender", rev="7dfb5f4d" }
+winit = "0.26"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = "0.9"

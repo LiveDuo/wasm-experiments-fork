@@ -1,0 +1,8 @@
+[package]
+name = "t"
+version = "0.0.1"
+edition = "2018"
+
+[dependencies]
+webrender = { git = "https://github.com/servo/webrender", rev="7dfb5f4d" }
+wr-helpers = { path = "../wr-helpers" }
