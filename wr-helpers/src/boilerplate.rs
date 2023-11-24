@@ -1,4 +1,4 @@
-// code copied from serve/webrender repo
+// code copied from servo/webrender repo
 
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -10,7 +10,6 @@ use std::env;
 use std::path::PathBuf;
 use webrender;
 use winit;
-use winit::platform::run_return::EventLoopExtRunReturn;
 use webrender::{DebugFlags, ShaderPrecacheFlags};
 use webrender::api::*;
 use webrender::render_api::*;
@@ -72,8 +71,8 @@ impl HandyDandyRectBuilder for (i32, i32) {
 pub trait Example {
     const TITLE: &'static str = "WebRender Sample App";
     const PRECACHE_SHADER_FLAGS: ShaderPrecacheFlags = ShaderPrecacheFlags::EMPTY;
-    const WIDTH: u32 = 1920;
-    const HEIGHT: u32 = 1080;
+    const WIDTH: u32 = 640;
+    const HEIGHT: u32 = 480;
 
     fn render(
         &mut self,
@@ -127,16 +126,13 @@ pub fn main_wrapper<E: Example>(
         None
     };
 
-    let mut events_loop = winit::event_loop::EventLoop::new();
-    let window_builder = winit::window::WindowBuilder::new()
-        .with_title(E::TITLE)
-        .with_inner_size(winit::dpi::LogicalSize::new(E::WIDTH as f64, E::HEIGHT as f64));
+    let events_loop = winit::event_loop::EventLoop::new();
     let windowed_context = glutin::ContextBuilder::new()
         .with_gl(glutin::GlRequest::GlThenGles {
             opengl_version: (3, 2),
             opengles_version: (3, 0),
         })
-        .build_windowed(window_builder, &events_loop)
+        .build_headless(&events_loop, winit::dpi::PhysicalSize::new(E::WIDTH, E::HEIGHT))
         .unwrap();
 
     let windowed_context = unsafe { windowed_context.make_current().unwrap() };
@@ -158,11 +154,8 @@ pub fn main_wrapper<E: Example>(
 
     println!("OpenGL version {}", gl.get_string(gl::VERSION));
     println!("Shader resource path: {:?}", res_path);
-    let device_pixel_ratio = windowed_context.window().scale_factor() as f32;
-    println!("Device pixel ratio: {}", device_pixel_ratio);
-
     println!("Loading shaders...");
-    let mut debug_flags = DebugFlags::ECHO_DRIVER_MESSAGES | DebugFlags::TEXTURE_CACHE_DBG;
+    let debug_flags = DebugFlags::ECHO_DRIVER_MESSAGES | DebugFlags::TEXTURE_CACHE_DBG;
     let opts = webrender::WebRenderOptions {
         resource_override_path: res_path,
         precache_flags: E::PRECACHE_SHADER_FLAGS,
@@ -173,10 +166,7 @@ pub fn main_wrapper<E: Example>(
     };
 
     let device_size = {
-        let size = windowed_context
-            .window()
-            .inner_size();
-        DeviceIntSize::new(size.width as i32, size.height as i32)
+        DeviceIntSize::new(E::WIDTH as i32, E::HEIGHT as i32)
     };
     let notifier = Box::new(Notifier::new(events_loop.create_proxy()));
     let (mut renderer, sender) = webrender::create_webrender_instance(
@@ -198,6 +188,12 @@ pub fn main_wrapper<E: Example>(
     let pipeline_id = PipelineId(0, 0);
     let mut builder = DisplayListBuilder::new(pipeline_id);
     let mut txn = Transaction::new();
+    txn.notify(NotificationRequest::new(Checkpoint::SceneBuilt, Box::new(Handler{})));
+    txn.notify(NotificationRequest::new(Checkpoint::FrameRendered, Box::new(Handler{})));
+    txn.notify(NotificationRequest::new(Checkpoint::TransactionDropped, Box::new(Handler{})));
+    txn.notify(NotificationRequest::new(Checkpoint::FrameTexturesUpdated, Box::new(Handler{})));
+    txn.notify(NotificationRequest::new(Checkpoint::FrameBuilt, Box::new(Handler{})));
+
     builder.begin();
 
     example.render(
@@ -216,111 +212,17 @@ pub fn main_wrapper<E: Example>(
     txn.generate_frame(0, RenderReasons::empty());
     api.send_transaction(document_id, txn);
 
-    println!("Entering event loop");
-    events_loop.run_return(|global_event, _elwt, control_flow| {
-        let mut txn = Transaction::new();
-        let mut custom_event = true;
-
-        let old_flags = debug_flags;
-        let win_event = match global_event {
-            winit::event::Event::WindowEvent { event, .. } => event,
-            _ => return,
-        };
-        match win_event {
-            winit::event::WindowEvent::CloseRequested => {
-                *control_flow = winit::event_loop::ControlFlow::Exit;
-                return;
-            }
-            winit::event::WindowEvent::AxisMotion { .. } |
-            winit::event::WindowEvent::CursorMoved { .. } => {
-                custom_event = example.on_event(
-                    win_event,
-                    windowed_context.window(),
-                    &mut api,
-                    document_id,
-                );
-                // skip high-frequency events from triggering a frame draw.
-                if !custom_event {
-                    return;
-                }
-            },
-            winit::event::WindowEvent::KeyboardInput {
-                input: winit::event::KeyboardInput {
-                    state: winit::event::ElementState::Pressed,
-                    virtual_keycode: Some(key),
-                    ..
-                },
-                ..
-            } => match key {
-                winit::event::VirtualKeyCode::Escape => {
-                    *control_flow = winit::event_loop::ControlFlow::Exit;
-                    return;
-                }
-                winit::event::VirtualKeyCode::P => debug_flags.toggle(DebugFlags::PROFILER_DBG),
-                winit::event::VirtualKeyCode::O => debug_flags.toggle(DebugFlags::RENDER_TARGET_DBG),
-                winit::event::VirtualKeyCode::I => debug_flags.toggle(DebugFlags::TEXTURE_CACHE_DBG),
-                winit::event::VirtualKeyCode::T => debug_flags.toggle(DebugFlags::PICTURE_CACHING_DBG),
-                winit::event::VirtualKeyCode::Q => debug_flags.toggle(
-                    DebugFlags::GPU_TIME_QUERIES | DebugFlags::GPU_SAMPLE_QUERIES
-                ),
-                winit::event::VirtualKeyCode::G => debug_flags.toggle(DebugFlags::GPU_CACHE_DBG),
-                winit::event::VirtualKeyCode::M => api.notify_memory_pressure(),
-                winit::event::VirtualKeyCode::C => {
-                    let path: PathBuf = "../captures/example".into();
-                    //TODO: switch between SCENE/FRAME capture types
-                    // based on "shift" modifier, when `glutin` is updated.
-                    let bits = CaptureBits::all();
-                    api.save_capture(path, bits);
-                },
-                _ => {
-                    custom_event = example.on_event(
-                        win_event,
-                        windowed_context.window(),
-                        &mut api,
-                        document_id,
-                    )
-                },
-            },
-            other => custom_event = example.on_event(
-                other,
-                windowed_context.window(),
-                &mut api,
-                document_id,
-            ),
-        };
-
-        if debug_flags != old_flags {
-            api.send_debug_cmd(DebugCommand::SetFlags(debug_flags));
-        }
-
-        if custom_event {
-            let mut builder = DisplayListBuilder::new(pipeline_id);
-            builder.begin();
-
-            example.render(
-                &mut api,
-                &mut builder,
-                &mut txn,
-                device_size,
-                pipeline_id,
-                document_id,
-            );
-            txn.set_display_list(
-                epoch,
-                builder.end(),
-            );
-            txn.generate_frame(0, RenderReasons::empty());
-        }
-        api.send_transaction(document_id, txn);
-
-        renderer.update();
-        renderer.render(device_size, 0).unwrap();
-        let _ = renderer.flush_pipeline_info();
-        example.draw_custom(&*gl);
-        windowed_context.swap_buffers().ok();
-
-        *control_flow = winit::event_loop::ControlFlow::Wait;
-    });
-
+    std::thread::sleep(std::time::Duration::from_millis(1000));
     renderer.deinit();
+
+
+}
+
+
+struct Handler {}
+
+impl NotificationHandler for Handler {
+    fn notify(&self, when: Checkpoint) {
+        println!("notification: {:?}", when)
+    }
 }

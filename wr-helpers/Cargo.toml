@@ -1,4 +1,4 @@
-# code copied from serve/webrender repo
+# code copied from servo/webrender repo
 [package]
 name = "wr-helpers"
 version = "0.0.1"
