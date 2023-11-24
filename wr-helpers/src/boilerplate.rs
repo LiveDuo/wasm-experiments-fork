@@ -70,7 +70,7 @@ impl HandyDandyRectBuilder for (i32, i32) {
 
 pub trait Example {
     const TITLE: &'static str = "WebRender Sample App";
-    const PRECACHE_SHADER_FLAGS: ShaderPrecacheFlags = ShaderPrecacheFlags::EMPTY;
+    const PRECACHE_SHADER_FLAGS: ShaderPrecacheFlags = ShaderPrecacheFlags::FULL_COMPILE;
     const WIDTH: u32 = 640;
     const HEIGHT: u32 = 480;
 
@@ -155,7 +155,8 @@ pub fn main_wrapper<E: Example>(
     println!("OpenGL version {}", gl.get_string(gl::VERSION));
     println!("Shader resource path: {:?}", res_path);
     println!("Loading shaders...");
-    let debug_flags = DebugFlags::ECHO_DRIVER_MESSAGES | DebugFlags::TEXTURE_CACHE_DBG;
+    // let debug_flags = DebugFlags::ECHO_DRIVER_MESSAGES | DebugFlags::TEXTURE_CACHE_DBG;
+    let debug_flags = DebugFlags::empty();
     let opts = webrender::WebRenderOptions {
         resource_override_path: res_path,
         precache_flags: E::PRECACHE_SHADER_FLAGS,
@@ -184,6 +185,7 @@ pub fn main_wrapper<E: Example>(
         renderer.set_external_image_handler(external_image_handler);
     }
 
+    println!("starting transaction");
     let epoch = Epoch(0);
     let pipeline_id = PipelineId(0, 0);
     let mut builder = DisplayListBuilder::new(pipeline_id);
@@ -194,8 +196,10 @@ pub fn main_wrapper<E: Example>(
     txn.notify(NotificationRequest::new(Checkpoint::FrameTexturesUpdated, Box::new(Handler{})));
     txn.notify(NotificationRequest::new(Checkpoint::FrameBuilt, Box::new(Handler{})));
 
-    builder.begin();
+    txn.skip_scene_builder();
+    txn.invalidate_rendered_frame(RenderReasons::empty());
 
+    builder.begin();
     example.render(
         &mut api,
         &mut builder,
@@ -208,14 +212,25 @@ pub fn main_wrapper<E: Example>(
         epoch,
         builder.end(),
     );
+
     txn.set_root_pipeline(pipeline_id);
     txn.generate_frame(0, RenderReasons::empty());
     api.send_transaction(document_id, txn);
 
-    std::thread::sleep(std::time::Duration::from_millis(1000));
+
+    println!("update1");
+    renderer.update();
+    dbg!(renderer.render(device_size, 0).unwrap());
+    api.flush_scene_builder();
+    println!("update2");
+    renderer.update();
+    println!("update3");
+    dbg!(renderer.render(device_size, 0).unwrap());
+
+
+
+    println!("update4");
     renderer.deinit();
-
-
 }
 
 

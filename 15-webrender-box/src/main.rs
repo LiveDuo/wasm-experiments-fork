@@ -26,11 +26,11 @@ impl Example for App {
         _api: &mut RenderApi,
         builder: &mut DisplayListBuilder,
         _txn: &mut Transaction,
-        _: DeviceIntSize,
+        d: DeviceIntSize,
         pipeline_id: PipelineId,
         _document_id: DocumentId,
     ) {
-        let content_bounds = LayoutRect::from_size(LayoutSize::new(800.0, 600.0));
+        let content_bounds = LayoutRect::from_size(LayoutSize::new(d.width as f32, d.height as f32));
         let root_space_and_clip = SpaceAndClipInfo::root_scroll(pipeline_id);
         let spatial_id = root_space_and_clip.spatial_id;
 
