@@ -177,6 +177,8 @@ pub fn main_wrapper<E: Example>(
         None,
     ).unwrap();
     let mut api = sender.create_api();
+
+
     let document_id = api.add_document(device_size);
 
     let external = example.get_image_handler(&*gl);
@@ -227,7 +229,9 @@ pub fn main_wrapper<E: Example>(
     println!("update3");
     dbg!(renderer.render(device_size, 0).unwrap());
 
-
+    std::thread::sleep(std::time::Duration::from_secs(1));
+    let buffer = gl.read_pixels(0, 0, device_size.width, device_size.height, /* RGBA8 */ 0x1908, /* UNSIGNED_BYTE */ 0x1401);
+    image::save_buffer("image.png", &buffer, device_size.width as u32, device_size.height as u32, image::ColorType::Rgba8).unwrap();
 
     println!("update4");
     renderer.deinit();
